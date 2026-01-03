@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Messenger Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #messages { border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll; }
+        input, button, select { margin: 5px 0; padding: 5px; }
+    </style>
+</head>
+<body>
+    <div id="userInfo" style="position: absolute; top: 10px; right: 10px; font-weight: bold; display: none;">
+        <!-- Username und ID wird hier angezeigt -->
+    </div>
+    
+    <h1>Messenger Test</h1>
+
+    <!-- Benutzerbereich -->
+    <div>
+        <input id="username" placeholder="Username">
+        <input id="password" type="password" placeholder="Passwort">
+        <button onclick="register()">Register</button>
+        <button onclick="login()">Login</button>
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <hr>
+
+    <!-- Chat erstellen -->
+    <div>
+        <input id="chatName" placeholder="Chat-Name">
+        <input id="chatUsers" placeholder="User-IDs (z.B. 1,2)">
+        <button onclick="createChat()">Chat erstellen</button>
+    </div>
+
+    <!-- Chat auswählen -->
+    <div>
+        <select id="chatSelect" onchange="changeChat()"></select>
+    </div>
+
+    <hr>
+
+    <!-- Nachrichten senden -->
+    <div>
+        <input id="chatMessage" placeholder="Nachricht">
+        <button onclick="sendMessage()">Senden</button>
+    </div>
+
+    <!-- Nachrichten anzeigen -->
+    <div id="messages"></div>
+
+    <script>
+        const BASE_URL = 'http://localhost:3000';
+        let userId = null;
+        let chatId = null;
+
+        ////////////////////////
+        // BENUTZER
+
+        function updateUserInfo() {
+            const userDiv = document.getElementById('userInfo');
+            if (userId) {
+                const username = document.getElementById('username').value;
+                userDiv.textContent = `Eingeloggt als: ${username} (ID ${userId})`;
+                userDiv.style.display = 'block';
+            } else {
+                userDiv.style.display = 'none';
+            }
+        }
+
+        async function register() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+
+            const res = await fetch(`${BASE_URL}/register`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                alert(data.error || "Registrierung fehlgeschlagen");
+                return;
+            }
+
+            alert(`Registrierung erfolgreich! User ID: ${data.id}`);
+            
+            usernameInput.value = '';
+            passwordInput.value = '';
+        }
+
+        async function login() {
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+
+            const username = usernameInput.value;
+            const password = passwordInput.value;
+
+            const res = await fetch(`${BASE_URL}/login`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.id) {
+                alert('Login fehlgeschlagen');
+                return;
+            }
+
+            userId = data.id;
+            alert(`Login erfolgreich: ${data.username}`);
+            updateUserInfo();
+            loadChats();
+
+            usernameInput.value = '';
+            passwordInput.value = '';
+        }
+
+        function logout() {
+            userId = null;
+            chatId = null;
+            document.getElementById('messages').innerHTML = '';
+            document.getElementById('chatSelect').innerHTML = '';
+            updateUserInfo();
+            alert('Ausgeloggt!');
+        }
+
+        ////////////////////////
+        // CHATS
+        async function createChat() {
+            if (!userId) { alert('Bitte einloggen!'); return; }
+
+            const name = document.getElementById('chatName').value;
+            let users = document.getElementById('chatUsers').value
+                .split(',')
+                .map(u => parseInt(u.trim()))
+                .filter(u => !isNaN(u));
+
+            if (!users.includes(userId)) users.push(userId);
+
+            const res = await fetch(`${BASE_URL}/chats`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, user_ids: users })
+            });
+
+            const chat = await res.json();
+            alert(`Chat "${chat.name || 'ohne Name'}" erstellt!`);
+            loadChats();
+        }
+
+        async function loadChats() {
+            if (!userId) return;
+
+            const res = await fetch(`${BASE_URL}/chats/${userId}/chats`);
+            const chats = await res.json();
+
+            const select = document.getElementById('chatSelect');
+            select.innerHTML = '';
+
+            chats.forEach(c => {
+                const option = document.createElement('option');
+                option.value = c.id;
+                option.textContent = c.name || `Chat ${c.id}`;
+                select.appendChild(option);
+            });
+
+            if (chats.length > 0) {
+                chatId = chats[0].id;
+                loadMessages();
+            }
+        }
+
+        function changeChat() {
+            chatId = parseInt(document.getElementById('chatSelect').value);
+            loadMessages();
+        }
+
+        ////////////////////////
+        // NACHRICHTEN
+        async function sendMessage() {
+            const content = document.getElementById('chatMessage').value;
+            if (!userId || !chatId || !content) return;
+
+            await fetch(`${BASE_URL}/chats/${chatId}/messages`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: userId, content })
+            });
+
+            document.getElementById('chatMessage').value = '';
+            loadMessages();
+        }
+
+        async function loadMessages() {
+            if (!chatId) return;
+
+            const res = await fetch(`${BASE_URL}/chats/${chatId}/messages`);
+            const messages = await res.json();
+
+            const container = document.getElementById('messages');
+            container.innerHTML = messages
+                .reverse()
+                .map(m => `<p><b>${m.username}</b>: ${m.content}</p>`)
+                .join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        setInterval(() => { if (userId) loadMessages(); }, 2000);
+    </script>
+</body>
+</html>
