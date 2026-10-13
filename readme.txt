@@ -133,7 +133,7 @@ DB_NAME=messenger
 2. **Starte den HTTP-Server:**
 
 ```bash
-:> http-server . -p 5500 --cors
+:> npx http-server . -p 5500 --cors
 
 3. **Frontend aufrufen:**
 
